@@ -1,0 +1,58 @@
+# ~/.bash_ssh_session: Logic to run ONLY if the current session is SSH.
+
+# --- Lookup Function ---
+# Function to find SSH Host Alias based on Client IP from ~/.ssh/config
+#
+# NOTE: This uses the client IP extracted from $SSH_CONNECTION, which is passed 
+# as the first argument ($1) when sourced from .bashrc.
+
+get_ssh_alias_by_ip () {
+    local CLIENT_IP="$1"
+    local SSH_CONFIG="${HOME}/.ssh/config"
+    local ALIAS=""
+
+    if [ ! -f "$SSH_CONFIG" ]; then
+        echo "$CLIENT_IP"
+        return
+    fi
+
+    # Awk script to parse the config file
+    ALIAS=$(awk -v ip="$CLIENT_IP" '
+        # Capture the most recent Host alias
+        /^[[:space:]]*Host[[:space:]]+/ {
+            # Get the alias (the field after "Host")
+            ALIAS = $2
+        }
+
+        # Check for HostName match
+        /^[[:space:]]*HostName[[:space:]]+/ {
+            # If the HostName matches the client IP, print the alias and exit.
+            if ($2 == ip) {
+                print ALIAS
+                exit
+            }
+        }
+    ' "$SSH_CONFIG" | head -n 1)
+
+    # Return the alias or the IP if no match was found.
+    if [ -n "$ALIAS" ]; then
+        echo "$ALIAS"
+    else
+        echo "$CLIENT_IP"
+    fi
+}
+
+# --- Main SSH Session Configuration ---
+
+# 1. Extract the client IP from the SSH_CONNECTION variable.
+# Format is: IP_client Port_client IP_server Port_server
+CLIENT_IP=$(echo "$SSH_CONNECTION" | cut -d ' ' -f 1)
+
+# 2. Get the Alias (Host name from config) or the raw IP.
+_ssh_client=$(get_ssh_alias_by_ip "$CLIENT_IP")
+
+# 3. Apply the Custom PS1
+PS1='${debian_chroot:+($debian_chroot)}\[\033[01;31m\]$_ssh_client \[\033[01;31m\]→ \[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ \[\033[01;32m\]'
+
+# 4. Print the Welcome Banner
+echo -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
